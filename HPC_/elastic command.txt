@@ -1,0 +1,107 @@
+j@+|1Ltx&d!.[vH - Windows Google cloud
+
+GET extrimism/_search/?size=1000&pretty=1
+{
+  "query": {
+    "match_all": {}
+  }
+}
+
+GET /subject/_search/?size=1000&pretty=1
+{
+  "query": {
+    "match_all": {}
+  }
+}
+
+
+
+POST /extrimism/data/_search?q=ids:"0"
+{
+  "query":{
+    "more_like_this" : {
+        "fields" : ["text"],
+        "like" : "123",
+        "min_term_freq" : 1,
+        "min_doc_freq": 1,
+        "max_query_terms" : 10
+    }
+  }
+}
+
+GET /extrimism/data/_search
+{
+    "query": {
+        "term" : { "ids" : "0" }
+    }
+}
+
+
+PUT /extrimism/data/9
+{
+      "ids":"0",
+      "text": "1234"
+}
+
+PUT /extrimism
+{
+    "mappings": {
+        "data":{
+          "properties": {
+              "ids":{
+                  "type": "string"
+              },
+              "text": {
+                  "type": "text",
+                  "index": "analyzed",
+                  "term_vector" : "yes"
+              }
+          }
+        }
+    }
+}
+
+
+PUT /subject/node/0
+{
+    "id": "0",
+    "wall": ["0", "1"],
+    "photo": ["0", "1"],
+    "video": ["0", "1"]
+}
+
+POST /subject/node/0/_update
+{
+    "script" : {
+        "inline": "ctx._source.wall.add(params.wall)",
+        "lang": "painless",
+        "params" : {
+            "wall" : "blue"
+        }
+    }
+}
+
+
+
+POST /subject/node/35521523/_update
+{"script" : {"inline": "ctx._source.photo.add(params.photo)", "lang" : "painless","params"
+ : {"photo" : "266914424"}}}
+
+
+GET /subject/node/35521523
+
+GET  /subject/node/0?_source=wall&pretty
+GET  /subject/node/0?_source=photo&pretty
+GET  /subject/node/0?_source=video&pretty
+
+GET /extrimism/data/1?pretty
+
+DELETE /extrimism
+
+
+DELETE extrimism/data
+{
+  "query": {
+    "match_all": {}
+  }
+}
