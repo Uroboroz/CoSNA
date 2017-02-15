@@ -241,7 +241,6 @@ string http_connect(string domain, int port, string method, string path, string 
 	return connect.body;
 }
 
-
 class network_manager {
 public:
 	void init() {
@@ -297,7 +296,12 @@ public:
 			}
 			mutex.unlock();
 			//cout << "\nnetwork_manager::async_connection" + method + "&access_token=" + at << endl;
-			save_json("./" + path_parse(method) + ".json", https_connect("api.vk.com", 443, "C:\build\bin\openssl-1.0.2d-x64\bin", "GET", method + "&access_token=" + at, "", ""));
+			boost::smatch results;
+			boost::regex_match(method, results, boost::regex("\\/method\\/users\\.get\\?user_id=(\\d+)\\*"));
+			if (results.size() == 2)
+				save_json("./" + results[1] + ".json", https_connect("api.vk.com", 443, "C:\build\bin\openssl-1.0.2d-x64\bin", "GET", method + "&access_token=" + at, "", ""));
+			else 
+				save_json("./" + path_parse(method) + ".json", https_connect("api.vk.com", 443, "C:\build\bin\openssl-1.0.2d-x64\bin", "GET", method + "&access_token=" + at, "", ""));
 			boost::this_thread::sleep(boost::posix_time::milliseconds(333));
 		}
 	}
@@ -326,12 +330,11 @@ private:
 	int counter_token = 0;
 } resolver_manager;
 
-
 class object_manager {
 public:
 	set<string> groups;
-
-	object_manager(string files) {
+	
+	/*object_manager(string files) {
 		cout << "OM start!!" << endl;
 		ifstream file; string line;
 		file.open(files);
@@ -339,13 +342,15 @@ public:
 			subject_list.push_back(line);
 		boost::thread* th = new boost::thread(&object_manager::manager, this);
 		group.add_thread(th);
-	}
+	}*/
 
 	void manager() {
 		cout << "\n\nManager start!!\n\n" << endl;
 		while (true) {
-			for (auto &item : subject_list)
-				init_state(item, false);
+			for (auto &id : subject_list) {
+				create_node(id);
+				init_state(id);
+			}
 
 			//for (auto &item : file_parse)
 				//cout << item << endl;
@@ -398,7 +403,7 @@ public:
 						th.detach();
 					}
 					else if (results[2] == "photos.getAll") {
-						boost::thread th = boost::thread(&object_manager::parse_photos_get_all, this, method);
+						boost::thread th = boost::thread(&object_manager::parse_photo, this, method);
 						th.detach();
 					}
 					else if (results[2] == "photos.getComments") {
@@ -414,23 +419,33 @@ public:
 		}
 	}
 
-	void init_state(string id, bool mode) {
-		//mode = true => full
-		if (id[0] != '-') {
-			resolver("groups.get", id, "", 0);
-			resolver("users.get", id, "", 0);
-		}
-		if (mode)
-			for (int i = 0; i <= 1000; i += 100)
-				resolver("wall.get", id, "", i);
-		
-			resolver("wall.get", id, "", 0);
-
-		resolver("video.get", id, "", 0);
-		resolver("photos.getAll", id, "", 0);
+	void init_state(string id) {
+		//Инициализация сбора первых 10 объектов
+		if (id[0] != '-') resolver("users.get", id, "", 0, 0);
+		resolver("wall.get", id, "", 0, 100);
+		resolver("video.get", id, "", 0, 200);
+		resolver("photos.getAll", id, "", 0, 200);
+		//audio
 	}
 
-	void resolver(string method, string id, string id_1, int offset) {
+	void employment_state(string id) {
+		//Обработка всех объектов категорий
+		auto all_objects = 0; //количество всех объектов
+		for (int i = 0; i <= all_objects; i+=100 )
+			resolver("wall.get", id, "", i, i+100);
+		
+		all_objects = 0;
+		for (int i = 0; i <= all_objects; i += 100)
+			resolver("video.get", id, "", i, i+200);
+		
+		all_objects = 0;
+		for (int i = 0; i <= all_objects; i += 100)
+			resolver("photos.getAll", id, "", i, i+200);
+
+		//audio
+	}
+
+	void resolver(string method, string id, string id_1, int offset, int count) {
 		string request;
 		if (method == "users.get")
 			request = "/method/users.get?user_id=" + id + "&fields=first_name,last_name,about,activities,bdate,books," +
@@ -438,18 +453,18 @@ public:
 			"maiden_name,military,movies,music,nickname,occupation,personal,quotes,relatives,schools,sex,universities,tv&v=" + version;
 		else if (method == "groups.get")
 			request = "/method/groups.get?user_id=" + id + "&offset=" + to_string(offset) + "&count=1000&v=" + version;
-		else if (method == "video.get")
-			request = "/method/video.get?owner_id=" + id + "&offset=" + to_string(offset) + "&count=200" + "&v=" + version; //&album_id= 
 		else if (method == "wall.get")
-			request = "/method/wall.get?owner_id=" + id + "&offset=" + to_string(offset) + "&count=100&v=" + version;
+			request = "/method/wall.get?owner_id=" + id + "&offset=" + to_string(offset) + "&count=" + to_string(count) + "&v=" + version;
 		else if (method == "wall.getComments")
 			request = "/method/wall.getComments?owner_id=" + id + "&post_id=" + id_1 +
 			"&need_likes=1&preview_length=0&offset=" + to_string(offset) + "&count=100&sort=desc&v=" + version;
+		else if (method == "video.get")
+			request = "/method/video.get?owner_id=" + id + "&offset=" + to_string(offset) + "&count=" + to_string(count) + "&v=" + version; //&album_id= 
 		else if (method == "video.getComments")
 			request = "/method/video.getComments?owner_id=" + id + "&video_id=" + id_1 +
-			"&need_likes=1&preview_length=0&offset=" + to_string(offset) + "&count=100&sort=desc&v=" + version;
+			"&need_likes=1&preview_length=0&offset=" + to_string(offset) + "&count=" + to_string(count) + "&sort=desc&v=" + version;
 		else if (method == "photos.getAll")
-			request = "/method/photos.getAll?owner_id=" + id + "&extended=1&offset=" + to_string(offset) + "&count=200&v=" + version;
+			request = "/method/photos.getAll?owner_id=" + id + "&extended=1&offset=" + to_string(offset) + "&count=" + to_string(count) + "&v=" + version;
 		else if (method == "photos.getComments")
 			request = "/method/photos.getComments?owner_id=" + id + "&photo_id=" + id_1 +
 			"&need_likes=1&offset=" + to_string(offset) + "&count=100&sort=desc&v=" + version;
@@ -460,63 +475,48 @@ public:
 		mutex.unlock();
 	}
 
-	/*JSON's file parsing*/
-
-	void parse_about(string method) {}
-
-	void parse_group(string method) {
-		cout << method << endl;
-
-		boost::regex regexp("\/method\/groups\.get\?user_id=(\\d+)&offset=(\\d+)&count=1000&v=5\.58");
-		boost::smatch results;
-		boost::regex_match(method, results, regexp);
-
-		while (!boost::filesystem::exists("./" + path_parse(method) + ".json")) {}
-		std::ifstream ifs("./" + path_parse(method) + ".json"); 
+	json file_to_json(string path) {
 		json j; 
+		std::ifstream ifs(path);
 		ifs >> j; 
-		int iter = 0;
+		ifs.close(); 
+		return j;
+	}
 
-		if (j["response"]["items"].dump() != "null") {
-			for (auto const& item : j["response"]["items"]) {
-				mutex.lock(); subject_list.push_back("-" + item.dump()); mutex.unlock();
-				iter++;
-			}
-
-			if (j["response"]["count"].get<int>() != iter && results[2].length() == 1)
-				for (int i = 1000; i < j["response"]["count"].get<int>() + 1000; i += 1000)
-					resolver("groups.get", results[1], "", i);
-		}
-
+	void decrement() {
 		mutex.lock();
 		counter_threads--;
 		mutex.unlock();
-
-		//cout << method << endl;
-
-		ifs.close();
-		boost::filesystem::remove("./" + path_parse(method) + ".json");
 	}
+
+	/*JSON's file parsing*/
+	string parse_about(string method) {
+		cout << method << endl;
+
+		while (!boost::filesystem::exists("./" + method + ".json")) {}
+		while (boost::filesystem::is_empty("./" + method + ".json"))
+			boost::this_thread::sleep(boost::posix_time::milliseconds(500));
+
+		json j = file_to_json("./" + method + ".json");
+		boost::filesystem::remove("./" + method + ".json");
+		decrement();
+		return j.dump();
+	}
+
+	void parse_group(string method) {}
 	
 	void parse_wall(string method) {
-		SYSTEMTIME st;
-		GetSystemTime(&st);
 		cout << method << endl;
 
 		while (!boost::filesystem::exists("./" + path_parse(method) + ".json")) {}
-
-		if (boost::filesystem::is_empty("./" + path_parse(method) + ".json")) {
-			boost::this_thread::sleep(boost::posix_time::milliseconds(300));
-			//mutex.lock(); counter_threads--; mutex.unlock();
-			//return;
-		}
-
-		boost::regex regexp("\\/method\\/wall\\.get\\?owner_id=([-]*\\d+)&offset=(\\d+)&count=100&v=5\\.58");
-		boost::smatch results; boost::regex_match(method, results, regexp);
+		while (boost::filesystem::is_empty("./" + path_parse(method) + ".json"))
+			boost::this_thread::sleep(boost::posix_time::milliseconds(500));
+				
+		boost::smatch results; 
+		boost::regex_match(method, results, boost::regex("\\/method\\/wall\\.get\\?owner_id=([-]*\\d+)&offset=(\\d+)&count=100&v=5\\.58"));
 
 		set<string> temp = query_params("wall", results[1]);
-		std::ifstream ifs("./" + path_parse(method) + ".json");	json j; ifs >> j;
-		ifs.close(); boost::filesystem::remove("./" + path_parse(method) + ".json");
+		json j = file_to_json("./" + path_parse(method) + ".json");
 
 		if (j["response"]["items"].dump() != "null") {
 			for (auto const& item : j["response"]["items"]) {
@@ -536,24 +536,20 @@ public:
 			}
 		}
 
-		SYSTEMTIME st1; GetSystemTime(&st1);
-		cout << "Time: " << st.wMinute << " " << st.wSecond << " " << st.wMilliseconds << " " << st1.wMinute << " " << st1.wSecond << " " << st1.wMilliseconds << "\n\n\n\n" << endl;
-
-		mutex.lock(); counter_threads--; mutex.unlock();
+		decrement();
+		boost::filesystem::remove("./" + path_parse(method) + ".json");
 	}
 
 	void parse_wall_comments(string method) {
-		boost::regex regexp("\\/method\\/wall\\.getComments\\?owner_id=([-]*\\d+)&post_id=(\\d+)&need_likes=1&preview_length=0&offset=(\\d+)&count=100&sort=desc&v=5\\.58");
 		boost::smatch results;
-		boost::regex_match(method, results, regexp);
+		boost::regex_match(method, results, boost::regex("\\/method\\/wall\\.getComments\\?owner_id=([-]*\\d+)&post_id=(\\d+)&need_likes=1&preview_length=0&offset=(\\d+)&count=100&sort=desc&v=5\\.58"));
 
 		while (!boost::filesystem::exists("./" + path_parse(method) + ".json")) {}
+		while (boost::filesystem::is_empty("./" + path_parse(method) + ".json"))
+			boost::this_thread::sleep(boost::posix_time::milliseconds(500));
 
-		if (boost::filesystem::is_empty("./" + path_parse(method) + ".json")) 
-			return;
-
-		std::ifstream ifs("./" + path_parse(method) + ".json");
-		json j; ifs >> j; int comment = 0;
+		json j = file_to_json("./" + path_parse(method) + ".json");
+		int comment = 0;
 
 		if (j["response"]["items"].dump() != "null") {
 			for (auto const& item : j["response"]["items"]) {
@@ -563,38 +559,24 @@ public:
 
 			if (j["response"]["count"].get<int>() != comment && results[3].length() == 1)
 				for (int i = 100; i < j["response"]["count"].get<int>() + 100; i += 100)
-					resolver("wall.getComments", results[1], results[2], i);
+					resolver("wall.getComments", results[1], results[2], i, 100);
 					//wall_comments(results[1], results[2], i);
 		}
-		mutex.lock();
-		counter_threads--;
-		mutex.unlock();
 
-		//cout << method << endl;
-
-		ifs.close();
+		decrement();
 		boost::filesystem::remove("./" + path_parse(method) + ".json");
 	}
 
 	void parse_video(string method) {
-		SYSTEMTIME st;
-		GetSystemTime(&st);
-
-		cout << method << endl;
-
-		boost::regex regexp("\\/method\\/video\\.get\\?owner_id=([-]*\\d+)&offset=(\\d+)&count=200&v=5\\.58");
 		boost::smatch results;
-		boost::regex_match(method, results, regexp);
+		boost::regex_match(method, results, boost::regex("\\/method\\/video\\.get\\?owner_id=([-]*\\d+)&offset=(\\d+)&count=200&v=5\\.58"));
 
 		while (!boost::filesystem::exists("./" + path_parse(method) + ".json")) {}
-		if (boost::filesystem::is_empty("./" + path_parse(method) + ".json")) {
-			boost::this_thread::sleep(boost::posix_time::milliseconds(300));
-			//mutex.lock(); counter_threads--; mutex.unlock();
-			//return;
-		}
+		while (boost::filesystem::is_empty("./" + path_parse(method) + ".json"))
+			boost::this_thread::sleep(boost::posix_time::milliseconds(500));
 
-		std::ifstream ifs("./" + path_parse(method) + ".json");
-		json j; ifs >> j; int comment = 0;
+		json j = file_to_json("./" + path_parse(method) + ".json"); 
+		int comment = 0;
 
 		set<string> temp = query_params("video", results[1]);
 
@@ -611,34 +593,23 @@ public:
 
 			if (j["response"]["count"].get<int>() != comment && results[2].length() == 1 && temp.empty())
 				for (int i = 200; i < j["response"]["count"].get<int>() + 200; i += 200)
-					resolver("video.get", results[1], "", i);
+					resolver("video.get", results[1], "", i, 200);
 		}
 
-		ifs.close();
+		decrement();
 		boost::filesystem::remove("./" + path_parse(method) + ".json");
-
-		SYSTEMTIME st1;
-		GetSystemTime(&st1);
-
-		cout << "Time: " << st.wMinute << " " << st.wSecond << " " << st.wMilliseconds << " " << st1.wMinute << " " << st1.wSecond << " " << st1.wMilliseconds << "\n\n\n\n" << endl;
-
-
-		mutex.lock();
-		counter_threads--;
-		mutex.unlock();
 	}
 
 	void parse_video_comments(string method) {
-		boost::regex regexp("\\/method\\/video\\.getComments\\?owner_id=([-]*\\d+)&video_id=(\\d+)&need_likes=1&preview_length=0&offset=(\\d+)&count=100&sort=desc&v=5\\.58");
 		boost::smatch results;
-		boost::regex_match(method, results, regexp);
+		boost::regex_match(method, results, boost::regex("\\/method\\/video\\.getComments\\?owner_id=([-]*\\d+)&video_id=(\\d+)&need_likes=1&preview_length=0&offset=(\\d+)&count=100&sort=desc&v=5\\.58"));
 
 		while (!boost::filesystem::exists("./" + path_parse(method) + ".json")) {}
-		if (boost::filesystem::is_empty("./" + path_parse(method) + ".json"))
-			return;
+		while (boost::filesystem::is_empty("./" + path_parse(method) + ".json"))
+			boost::this_thread::sleep(boost::posix_time::milliseconds(500));
 
-		std::ifstream ifs("./" + path_parse(method) + ".json");
-		json j; ifs >> j; int comment = 0;
+		json j = file_to_json("./" + path_parse(method) + ".json");
+		int comment = 0;
 
 		if (j["response"]["items"].dump() != "null") {
 			set<string> video_comment_text;
@@ -649,37 +620,24 @@ public:
 
 			if (j["response"]["count"].get<int>() != comment && results[3].length() == 1)
 				for (int i = 100; i < j["response"]["count"].get<int>() + 100; i += 100)
-					resolver("video.getComments", results[1], results[2], i);
+					resolver("video.getComments", results[1], results[2], i, 100);
 					//video_comments(results[1], results[2], i);
 		}
-		mutex.lock();
-		counter_threads--;
-		mutex.unlock();
 
-		//cout << method << endl;
-
-		ifs.close();
+		decrement();
 		boost::filesystem::remove("./" + path_parse(method) + ".json");
 	}
 
-	void parse_photos_get_all(string method) {
-		SYSTEMTIME st;
-		GetSystemTime(&st);
-		cout << method << endl;
-
-		boost::regex regexp("\\/method\\/photos\\.getAll\\?owner_id=([-]*\\d+)&extended=1&offset=(\\d+)&count=200&v=5\\.58");
+	void parse_photo(string method) {
 		boost::smatch results;
-		boost::regex_match(method, results, regexp);
+		boost::regex_match(method, results, boost::regex("\\/method\\/photos\\.getAll\\?owner_id=([-]*\\d+)&extended=1&offset=(\\d+)&count=200&v=5\\.58"));
 
 		while (!boost::filesystem::exists("./" + path_parse(method) + ".json")) {}
-		if (boost::filesystem::is_empty("./" + path_parse(method) + ".json")) {
-			boost::this_thread::sleep(boost::posix_time::milliseconds(300));
-			//mutex.lock(); counter_threads--; mutex.unlock();
-			//return;
-		}
-
-		std::ifstream ifs("./" + path_parse(method) + ".json");
-		json j; ifs >> j; int comment = 0;
+		while (boost::filesystem::is_empty("./" + path_parse(method) + ".json"))
+			boost::this_thread::sleep(boost::posix_time::milliseconds(500));
+	
+		json j = file_to_json("./" + path_parse(method) + ".json");
+		int comment = 0;
 
 		set<string> temp = query_params("photo", results[1]);
 
@@ -695,33 +653,23 @@ public:
 
 			if (j["response"]["count"].get<int>() != comment && results[2].length() == 1 && temp.empty())
 				for (int i = 200; i < j["response"]["count"].get<int>() + 200; i += 200)
-					resolver("photos.getAll", results[1], "", i);
+					resolver("photos.getAll", results[1], "", i, 200);
 		}
 
-		ifs.close();
+		decrement();
 		boost::filesystem::remove("./" + path_parse(method) + ".json");
-
-		SYSTEMTIME st1;
-		GetSystemTime(&st1);
-
-		cout << "Time: " << st.wMinute << " " << st.wSecond << " " << st.wMilliseconds << " " << st1.wMinute << " " << st1.wSecond << " " << st1.wMilliseconds << "\n\n\n\n" << endl;
-
-		mutex.lock();
-		counter_threads--;
-		mutex.unlock();
 	}
 
 	void parse_photos_comments(string method) {
-		boost::regex regexp("\\/method\\/photos\\.getComments\\?owner_id=([-]*\\d+)&photo_id=(\\d+)&need_likes=1&offset=(\\d+)&count=100&sort=desc&v=5\\.58");
 		boost::smatch results;
-		boost::regex_match(method, results, regexp);
+		boost::regex_match(method, results, boost::regex("\\/method\\/photos\\.getComments\\?owner_id=([-]*\\d+)&photo_id=(\\d+)&need_likes=1&offset=(\\d+)&count=100&sort=desc&v=5\\.58"));
 
 		while (!boost::filesystem::exists("./" + path_parse(method) + ".json")) {}
-		if (boost::filesystem::is_empty("./" + path_parse(method) + ".json")) 
-			return;
+		while (boost::filesystem::is_empty("./" + path_parse(method) + ".json"))
+			boost::this_thread::sleep(boost::posix_time::milliseconds(500));
 
-		std::ifstream ifs("./" + path_parse(method) + ".json");
-		json j; ifs >> j; int comment = 0;
+		json j = file_to_json("./" + path_parse(method) + ".json");
+		int comment = 0;
 
 		if (j["response"]["items"].dump() != "null") {
 			for (auto const& item : j["response"]["items"]) {
@@ -731,22 +679,23 @@ public:
 
 			if (j["response"]["count"].get<int>() != comment && results[3].length() == 1)
 				for (int i = 100; i < j["response"]["count"].get<int>() + 100; i += 100)
-					resolver("photos.getComments", results[1], results[2], i);
+					resolver("photos.getComments", results[1], results[2], i, 100);
 					//photos_comments(results[1], results[2], i);
 		}
 
-		mutex.lock();
-		counter_threads--;
-		mutex.unlock();
-
-		//cout << method << endl;
-
-		ifs.close();
-		boost::filesystem::remove("./" + method + ".json");
+		decrement();
+		boost::filesystem::remove("./" + path_parse(method) + ".json");
 	}
 
 
 	/*ElasticSearch*/
+	string escape(string text) {
+		long put;
+		while (put = text.find("\"") && put != string::npos)
+			text.erase(put, 1);
+		return text;
+	}
+
 	set<string> query_params(string type_params, string id_user) {
 		set<string> results;
 		//cout << "GET localhost:9200/subject/node/" + id_user + "?_source=" + type_params + "&pretty" << endl;
@@ -831,29 +780,165 @@ public:
 		}
 	}
 
+	/*New method class*/
 
-	void create_node() {
+	void create_node(string id) {
 		/*Создает пустой объект узла*/
+		string type = (id[0] == '-') ? "group" : "user" ;
+		string data = "{\"id\": \"" + id + "\"," 
+					"\"coefficient\": 0.0," 
+					"\"type\":\"" + type + "\","  
+					"\"about\": \"" + escape(parse_about(id)) + "\","
+					"\"friends\":0," 
+					"\"followers\":0," 
+					"\"last_photo\": \"\"," 
+					"\"last_video\": \"\"," 
+					"\"last_audio\": \"\"," 
+					"\"last_post\": \"\"," 
+					"\"wall\": [{\"id\": \"\"," 
+								"\"from_id\": \"\"," 
+								"\"owner_id\": \"\"," 
+								"\"date\": \"\"," 
+								"\"text\": \"\","
+								"\"tags\": []}],"
+					"\"photo\": [  {\"id\": \"\"," 
+								"\"from_id\": \"\"," 
+								"\"owner_id\": \"\"," 
+								"\"date\": \"\"," 
+								"\"text\": \"\","
+								"\"tags\": []}],"
+					"\"video\": [  {\"id\": \"\"," 
+								"\"from_id\": \"\"," 
+								"\"owner_id\": \"\"," 
+								"\"date\": \"\"," 
+								"\"text\": \"\","
+								"\"tags\": []}],"
+					"\"audio\": [  {\"id\": \"\"," 
+								"\"from_id\": \"\"," 
+								"\"owner_id\": \"\"," 
+								"\"text\": \"\","
+								"\"tags\": []}]}";
+			
+		/*string data = "{\"id\": \"" + id + "\"," 
+					"\"coefficient\": 0.0," 
+					"\"type\":\"" + type + "\","  
+					"\"about\": \"" + escape(parse_about(id)) + "\","
+					"\"friends\":0," 
+					"\"followers\":0," 
+					"\"last_photo\": \"\"," 
+					"\"last_video\": \"\"," 
+					"\"last_audio\": \"\"," 
+					"\"last_post\": \"\"," 
+					"\"wall\": [],"
+					"\"photo\": [],"
+					"\"video\": [],"
+					"\"audio\": []"
+				"}";*/
+
+		http_connect("localhost", 9200, "POST", "/subjects/nodes/" + id, data, "application/json");
+
+		//cout << "CREATE::POST: " << http_connect("localhost", 9200, "POST", "/subject/node/" + id, data, "application/json") << endl;
 	}
 
-	void update_node() {
-		/*Обновляет данные узла*/
+	void update_node(string id, vector<string> options) {
+		/*Обновление данных об узле*/
+		string data;
+		if (options[0] == "wall" || options[0] == "photo" || options[0] == "video" || options[0] == "audio") {
+			auto tags = (options.size() == 7) ? options[6] + "\", \"" + options[7] : options[6];
+			data = "{"
+				"\"script\" : {"
+				"\"inline\": \"ctx._source." + options[0] + ".add(params.tag)\","
+				"\"lang\": \"painless\","
+				"\"params\" : {"
+				"\"tag\" : {\"id\": \"" + options[1] + "\","
+						   "\"from_id\": \"" + options[2] + "\","
+				           "\"owner_id\": \"" + options[3] + "\","
+				           "\"date\": " + options[4] + ","
+						   "\"text\": \"" + cp1251_to_utf8(&utf8_to_cp1251(escape(options[5]))[0u]) + "\""
+						   "\"tag\": [\"" + tags + "\"]"
+						   "}"
+				"}}}";
+		}
+		else if (options[0] == "last_post" || options[0] == "last_video" || 
+			     options[0] == "last_photo" || options[0] == "last_audio" || 
+			     options[0] == "") {
+			data = "{"
+				"\"script\" : {"
+				"\"inline\": \"ctx._source." + options[0] + " = params.option\","
+				"\"lang\": \"painless\","
+				"\"params\" : {"
+				"\"option\" : \"" + options[1] + "\""
+				"}}}";
+		}
+		else if (options[0] == "coefficient" || options[0] == "photo_count" || 
+			     options[0] == "video_count" || options[0] == "audio_count" || options[0] == "post_count") {
+			data = "{"
+				"\"script\" : {"
+				"\"inline\": \"ctx._source." + options[0] + " = params.option\","
+				"\"lang\": \"painless\","
+				"\"params\" : {"
+				"\"option\" : " + options[1] + ""
+				"}}}";
+		}
+		else {
+			//Exception!
+		}
+
+		cout << data << endl;
+		http_connect("localhost", 9200, "POST", "/subjects/nodes/" + id + "/_update", data, "application/json");
+
+		//cout << "POST localhost:9200/subject/node/" + id_user + "/_update " << data << endl;
 	}
 
-	void delete_node() {
+	void delete_node(string node) {
 		/*Удаляет узел*/
+		http_connect("localhost", 9200, "DELETE", "/subjects/nodes/" + id, "", "");
 	}
 
-	bool query_options() {
+	bool search_query(string text) {
+		//Поиск подобных или равных запросов
+		//cp1251_to_utf8(&utf8_to_cp1251(options[5])[0u])
+
+		string query = "{\"query\":"
+			"{\"more_like_this\": {"
+				"\"fields\": [\"text\"],"
+				"\"like\": \"" + cp1251_to_utf8(&utf8_to_cp1251(escape(text))[0u]) + "\","
+				"\"min_term_freq\": 1,"
+				"\"min_doc_freq\": 1,"
+				"\"max_query_terms\": 10"
+				"}"
+			"}"
+		"}";
 		
+		/*GET subjects / _search
+		{
+			"query": {
+				"bool": {
+					"must": [
+					{ "match": { "wall.text": "text1234567890" }}
+					]
+				}
+			}
+		}*/
+
+		return true;
 	}
 
-	void processing_data() {
+
+	void processing_data(string text) {
 		/*Обработка данных. 
 		Поиск схожих запросов поисковике. 
 		Категоризация текста и дальнешое тегирование.*/
-	}
 
+		if (search_query(text)) {
+
+		}
+		else {
+			categorizer();
+		}
+	}
+	
+	void categorizer() {} //? интерфейс
 
 	string utf8_to_cp1251(std::string const & utf8)
 	{
@@ -933,7 +1018,11 @@ int main() {
 	//Сначала обрабатываются пользователи, по ктором собирается списко групп. 
 	//Далее борабатываются полученные группы.
 	resolver_manager.init();
-	object_manager om("./users.txt");
+	//object_manager om("./users.txt");
+	object_manager om;
+
+
+
 	cin.get();
-	return 0;
+	return 0; 
 }
